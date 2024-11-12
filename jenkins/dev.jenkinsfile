@@ -1,18 +1,90 @@
 #!/usr/bin/env groovy
 
-// This is the main pipeline configuration file that Jenkins will execute
-// Prerequisites on Jenkins side:
-// 1. Create these credentials in Jenkins:
-//    - ID: 'snowflake-dev-user' (type: Username with password)
-//    - ID: 'snowflake-dev-password' (type: Secret text)
-// 2. Install required Jenkins plugins:
-//    - Pipeline
-//    - Credentials
-//    - AnsiColor
+pipeline {
+    agent any
 
-// Call the main pipeline with basic configuration
-snowflakeFlywayPipeline {
-    sessionPrefix = 'SNOWFLAKE_FLYWAY'    // Prefix for session naming
-    envOverride  = 'dev'                  // Target environment
-    agentLabel   = 'any'                  // Jenkins agent label (use 'any' for simple setup)
+    // Environment variables available throughout the pipeline
+    environment {
+        // Load Snowflake credentials from Jenkins
+        SNOWFLAKE_USER = credentials('snowflake-user')
+        SESSION_PREFIX = 'SNOWFLAKE_FLYWAY'
+    }
+
+    // Pipeline stages
+    stages {
+        // Setup environment variables and configuration
+        stage('Setup Environment') {
+            steps {
+                script {
+                    // Read environment configuration
+                    def envJson = readJSON(file: './configs/dev.json')
+                    
+                    // Set deployment parameters
+                    env.DEPLOY_ENV = 'dev'
+                    env.SESSION_NAME = "${env.SESSION_PREFIX}_${BUILD_NUMBER}"
+                    
+                    // Get user input for deployment options
+                    def deployParams = input(
+                        message: 'Choose database type and flyway details:',
+                        ok: 'Continue',
+                        parameters: [
+                            choice(
+                                name: 'FLYWAY_TASK',
+                                choices: ['info', 'migrate'],
+                                description: 'Info: Show pending changes, Migrate: Apply changes'
+                            ),
+                            choice(
+                                name: 'DATABASE_TYPE',
+                                choices: ['DEV_DB'],
+                                description: 'Target database'
+                            ),
+                            choice(
+                                name: 'WAREHOUSE',
+                                choices: ['COMPUTE_WH'],
+                                description: 'Snowflake warehouse to use'
+                            )
+                        ]
+                    )
+
+                    // Set deployment variables
+                    env.FLYWAY_TASK = deployParams.FLYWAY_TASK
+                    env.DEPLOY_DATABASE = deployParams.DATABASE_TYPE
+                    env.DEPLOY_WAREHOUSE = deployParams.WAREHOUSE
+                    env.DB_URL = "${envJson.jdbc_url}${envJson.account_name}/?db=${DEPLOY_DATABASE}&warehouse=${DEPLOY_WAREHOUSE}&role=${envJson.rolename}"
+                    env.BASELINE = envJson.baseline_flag
+                }
+            }
+        }
+
+        // Execute Flyway migration
+        stage('Run Migration') {
+            steps {
+                script {
+                    // Make migration script executable
+                    sh 'chmod +x ./sources/migrate_scripts.sh'
+                    
+                    // Execute migration script
+                    sh """
+                        ./sources/migrate_scripts.sh \
+                        "\${DB_URL}" \
+                        "\${SNOWFLAKE_USER_USR}" \
+                        "\${SNOWFLAKE_USER_PSW}" \
+                        "\${DEPLOY_DATABASE}" \
+                        "\${DEPLOY_WAREHOUSE}" \
+                        "\${FLYWAY_TASK}" \
+                        "\${BASELINE}"
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline completed successfully!"
+        }
+        failure {
+            echo "Pipeline failed. Please check the logs for details."
+        }
+    }
 }
