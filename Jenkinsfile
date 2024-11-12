@@ -18,14 +18,6 @@ def call(body) {
             }
         }
 
-        // Pipeline options
-        options {
-            // Prevent concurrent builds of the same branch
-            disableConcurrentBuilds()
-            // Enable colored output in console
-            ansiColor('xterm')
-        }
-
         // Environment variables available throughout the pipeline
         environment {
             // Load Snowflake credentials from Jenkins
