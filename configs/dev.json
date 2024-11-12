@@ -1,0 +1,8 @@
+{
+    "deploy_env": "dev",
+    "jdbc_url": "jdbc:snowflake://",
+    "account_name": "TVDWARH-WSB57083.snowflakecomputing.com",
+    "rolename": "ACCOUNTADMIN",
+    "authenticator": "snowflake",
+    "baseline_flag": "false"
+}

@@ -1,0 +1,18 @@
+#!/usr/bin/env groovy
+
+// This is the main pipeline configuration file that Jenkins will execute
+// Prerequisites on Jenkins side:
+// 1. Create these credentials in Jenkins:
+//    - ID: 'snowflake-dev-user' (type: Username with password)
+//    - ID: 'snowflake-dev-password' (type: Secret text)
+// 2. Install required Jenkins plugins:
+//    - Pipeline
+//    - Credentials
+//    - AnsiColor
+
+// Call the main pipeline with basic configuration
+snowflakeFlywayPipeline {
+    sessionPrefix = 'SNOWFLAKE_FLYWAY'    // Prefix for session naming
+    envOverride  = 'dev'                  // Target environment
+    agentLabel   = 'any'                  // Jenkins agent label (use 'any' for simple setup)
+}
