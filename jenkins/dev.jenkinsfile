@@ -6,7 +6,7 @@ pipeline {
     // Environment variables available throughout the pipeline
     environment {
         // Load Snowflake credentials from Jenkins
-        SNOWFLAKE_USER = credentials('snowflake-user')
+        SNOWFLAKE_USER = credentials('snowflake-credentials1')
         SESSION_PREFIX = 'SNOWFLAKE_FLYWAY'
     }
 
@@ -16,42 +16,53 @@ pipeline {
         stage('Setup Environment') {
             steps {
                 script {
-                    // Read environment configuration
-                    def envJson = readJSON(file: './configs/dev.json')
-                    
-                    // Set deployment parameters
-                    env.DEPLOY_ENV = 'dev'
-                    env.SESSION_NAME = "${env.SESSION_PREFIX}_${BUILD_NUMBER}"
-                    
-                    // Get user input for deployment options
-                    def deployParams = input(
-                        message: 'Choose database type and flyway details:',
-                        ok: 'Continue',
-                        parameters: [
-                            choice(
-                                name: 'FLYWAY_TASK',
-                                choices: ['info', 'migrate'],
-                                description: 'Info: Show pending changes, Migrate: Apply changes'
-                            ),
-                            choice(
-                                name: 'DATABASE_TYPE',
-                                choices: ['DEV_DB'],
-                                description: 'Target database'
-                            ),
-                            choice(
-                                name: 'WAREHOUSE',
-                                choices: ['COMPUTE_WH'],
-                                description: 'Snowflake warehouse to use'
-                            )
-                        ]
-                    )
+                    try {
+                        // Read environment configuration
+                        def configFile = readFile(file: './configs/dev.json')
+                        def envJson = readJSON(text: configFile)
+                        
+                        // Set deployment parameters
+                        env.DEPLOY_ENV = 'dev'
+                        env.SESSION_NAME = "${env.SESSION_PREFIX}_${BUILD_NUMBER}"
+                        
+                        // Get user input for deployment options
+                        def deployParams = input(
+                            message: 'Choose database type and flyway details:',
+                            ok: 'Continue',
+                            parameters: [
+                                choice(
+                                    name: 'FLYWAY_TASK',
+                                    choices: ['info', 'migrate'],
+                                    description: 'Info: Show pending changes, Migrate: Apply changes'
+                                ),
+                                choice(
+                                    name: 'DATABASE_TYPE',
+                                    choices: ['DEV_DB'],
+                                    description: 'Target database'
+                                ),
+                                choice(
+                                    name: 'WAREHOUSE',
+                                    choices: ['COMPUTE_WH'],
+                                    description: 'Snowflake warehouse to use'
+                                )
+                            ]
+                        )
 
-                    // Set deployment variables
-                    env.FLYWAY_TASK = deployParams.FLYWAY_TASK
-                    env.DEPLOY_DATABASE = deployParams.DATABASE_TYPE
-                    env.DEPLOY_WAREHOUSE = deployParams.WAREHOUSE
-                    env.DB_URL = "${envJson.jdbc_url}${envJson.account_name}/?db=${DEPLOY_DATABASE}&warehouse=${DEPLOY_WAREHOUSE}&role=${envJson.rolename}"
-                    env.BASELINE = envJson.baseline_flag
+                        // Set deployment variables
+                        env.FLYWAY_TASK = deployParams.FLYWAY_TASK
+                        env.DEPLOY_DATABASE = deployParams.DATABASE_TYPE
+                        env.DEPLOY_WAREHOUSE = deployParams.WAREHOUSE
+                        env.DB_URL = "${envJson.jdbc_url}${envJson.account_name}/?db=${DEPLOY_DATABASE}&warehouse=${DEPLOY_WAREHOUSE}&role=${envJson.rolename}"
+                        env.BASELINE = envJson.baseline_flag
+
+                        echo "Environment setup completed successfully"
+                        echo "Database URL: ${env.DB_URL}"
+                        echo "Database: ${env.DEPLOY_DATABASE}"
+                        echo "Warehouse: ${env.DEPLOY_WAREHOUSE}"
+                        echo "Task: ${env.FLYWAY_TASK}"
+                    } catch (Exception e) {
+                        error "Failed to setup environment: ${e.getMessage()}"
+                    }
                 }
             }
         }
@@ -60,20 +71,24 @@ pipeline {
         stage('Run Migration') {
             steps {
                 script {
-                    // Make migration script executable
-                    sh 'chmod +x ./sources/migrate_scripts.sh'
-                    
-                    // Execute migration script
-                    sh """
-                        ./sources/migrate_scripts.sh \
-                        "\${DB_URL}" \
-                        "\${SNOWFLAKE_USER_USR}" \
-                        "\${SNOWFLAKE_USER_PSW}" \
-                        "\${DEPLOY_DATABASE}" \
-                        "\${DEPLOY_WAREHOUSE}" \
-                        "\${FLYWAY_TASK}" \
-                        "\${BASELINE}"
-                    """
+                    try {
+                        // Make migration script executable
+                        sh 'chmod +x ./sources/migrate_scripts.sh'
+                        
+                        // Execute migration script
+                        sh """
+                            ./sources/migrate_scripts.sh \
+                            "\${DB_URL}" \
+                            "\${SNOWFLAKE_USER_USR}" \
+                            "\${SNOWFLAKE_USER_PSW}" \
+                            "\${DEPLOY_DATABASE}" \
+                            "\${DEPLOY_WAREHOUSE}" \
+                            "\${FLYWAY_TASK}" \
+                            "\${BASELINE}"
+                        """
+                    } catch (Exception e) {
+                        error "Failed to execute migration: ${e.getMessage()}"
+                    }
                 }
             }
         }
@@ -85,6 +100,9 @@ pipeline {
         }
         failure {
             echo "Pipeline failed. Please check the logs for details."
+        }
+        always {
+            echo "Pipeline execution completed"
         }
     }
 }
