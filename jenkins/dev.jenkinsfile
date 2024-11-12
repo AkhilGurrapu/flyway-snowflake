@@ -37,7 +37,7 @@ pipeline {
                                 ),
                                 choice(
                                     name: 'DATABASE_TYPE',
-                                    choices: ['DEV_DB'],
+                                    choices: ['TEST'],
                                     description: 'Target database'
                                 ),
                                 choice(
